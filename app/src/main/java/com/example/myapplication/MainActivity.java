@@ -26,7 +26,6 @@ public class MainActivity extends AppCompatActivity {
         Switch swRadianes = findViewById(R.id.switch2);
 
         if (swGrados != null && swRadianes != null) {
-            // Inicialización: Grados por defecto
             swGrados.setChecked(true);
             esRadianes = false;
 
@@ -50,7 +49,6 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // BOTONES 0-9
     public void onNumeroClick(View view) {
         Button boton = (Button) view;
         String numeroLeido = boton.getText().toString();
@@ -63,18 +61,23 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // BOTONES +, -, *, /, SIN, COS, TAN
     public void onOperadorClick(View view) {
         Button boton = (Button) view;
         String operador = boton.getText().toString();
         String textoActual = pantalla.getText().toString();
 
-        if (!textoActual.equals("Error") && !textoActual.isEmpty()) {
-            if (esOperadorAlFinal(textoActual)) {
-                pantalla.setText(reemplazarUltimoOperador(textoActual, operador));
-            } else {
-                pantalla.append(operador);
+        if (!textoActual.equals("Error")) {
+            if (esNuevoNumero && isTrig(operador)) {
+                pantalla.setText(operador);
+                esNuevoNumero = false;
+                return;
             }
+
+            if (isTrig(operador) && !textoActual.isEmpty() && Character.isDigit(textoActual.charAt(textoActual.length() - 1))) {
+                pantalla.append("*");
+            }
+            
+            pantalla.append(operador);
             esNuevoNumero = false;
         }
     }
@@ -83,21 +86,6 @@ public class MainActivity extends AppCompatActivity {
         onOperadorClick(view);
     }
 
-    private boolean esOperadorAlFinal(String texto) {
-        if (texto.isEmpty()) return false;
-        char ultimo = texto.charAt(texto.length() - 1);
-        return ultimo == '+' || ultimo == '-' || ultimo == '*' || ultimo == '/' || 
-               texto.endsWith("SIN") || texto.endsWith("COS") || texto.endsWith("TAN");
-    }
-
-    private String reemplazarUltimoOperador(String texto, String nuevoOp) {
-        if (texto.endsWith("SIN") || texto.endsWith("COS") || texto.endsWith("TAN")) {
-            return texto.substring(0, texto.length() - 3) + nuevoOp;
-        }
-        return texto.substring(0, texto.length() - 1) + nuevoOp;
-    }
-
-    // BOTÓN EXE (Resultado Final)
     public void onExeClick(View view) {
         String expresion = pantalla.getText().toString();
         if (expresion.isEmpty() || expresion.equals("Error")) return;
@@ -115,36 +103,11 @@ public class MainActivity extends AppCompatActivity {
         List<String> tokens = fragmentarExpresion(expresion);
         if (tokens.isEmpty()) return 0;
 
-        int i = 0;
-        double resultado;
+        double resultado = Double.parseDouble(tokens.get(0));
 
-        // Primer valor
-        if (isTrig(tokens.get(i))) {
-            String trigOp = tokens.get(i);
-            double val = Double.parseDouble(tokens.get(i + 1));
-            resultado = aplicarTrig(trigOp, val);
-            i += 2;
-        } else {
-            resultado = Double.parseDouble(tokens.get(i));
-            i++;
-        }
-
-        while (i < tokens.size()) {
+        for (int i = 1; i < tokens.size(); i += 2) {
             String op = tokens.get(i);
-            i++;
-
-            if (i >= tokens.size()) break;
-
-            double siguienteVal;
-            if (isTrig(tokens.get(i))) {
-                String trigOp = tokens.get(i);
-                double val = Double.parseDouble(tokens.get(i + 1));
-                siguienteVal = aplicarTrig(trigOp, val);
-                i += 2;
-            } else {
-                siguienteVal = Double.parseDouble(tokens.get(i));
-                i++;
-            }
+            double siguienteVal = Double.parseDouble(tokens.get(i + 1));
 
             switch (op) {
                 case "+": resultado += siguienteVal; break;
@@ -171,38 +134,59 @@ public class MainActivity extends AppCompatActivity {
             case "COS": res = Math.cos(radians); break;
             case "TAN": res = Math.tan(radians); break;
         }
-        // Limpieza de precisión para valores como COS(90)
         if (Math.abs(res) < 1E-10) res = 0;
         return res;
     }
 
     private List<String> fragmentarExpresion(String expresion) {
         List<String> tokens = new ArrayList<>();
-        StringBuilder temp = new StringBuilder();
+        String numeroAcumulado = "";
 
         for (int i = 0; i < expresion.length(); i++) {
             char c = expresion.charAt(i);
-            if (c == '+' || c == '-' || c == '*' || c == '/') {
-                if (temp.length() > 0) {
-                    tokens.add(temp.toString());
-                    temp.setLength(0);
+
+            if ("+-*/".indexOf(c) != -1) {
+                if (!numeroAcumulado.isEmpty()) {
+                    tokens.add(numeroAcumulado);
+                    numeroAcumulado = "";
                 }
                 tokens.add(String.valueOf(c));
-            } else if (Character.isLetter(c)) {
-                if (temp.length() > 0 && !Character.isLetter(temp.charAt(0))) {
-                    tokens.add(temp.toString());
-                    temp.setLength(0);
+            } 
+            else if (i + 2 < expresion.length() && isTrig(expresion.substring(i, i + 3))) {
+                if (!numeroAcumulado.isEmpty()) {
+                    tokens.add(numeroAcumulado);
+                    numeroAcumulado = "";
                 }
-                temp.append(c);
-                if (temp.length() == 3) {
-                    tokens.add(temp.toString());
-                    temp.setLength(0);
+                String funcion = expresion.substring(i, i + 3);
+                int j = i + 3;
+                StringBuilder valTrig = new StringBuilder();
+
+                if (j < expresion.length() && expresion.charAt(j) == '-') {
+                    valTrig.append('-');
+                    j++;
                 }
-            } else {
-                temp.append(c);
+
+                while (j < expresion.length() && (Character.isDigit(expresion.charAt(j)) || expresion.charAt(j) == '.')) {
+                    valTrig.append(expresion.charAt(j));
+                    j++;
+                }
+
+                String valorStr = valTrig.toString();
+                double valorNum = 0;
+                if (!valorStr.isEmpty() && !valorStr.equals("-")) {
+                    valorNum = Double.parseDouble(valorStr);
+                }
+
+                double valorCalculado = aplicarTrig(funcion, valorNum);
+                tokens.add(String.valueOf(valorCalculado));
+                i = j - 1;
+            } 
+            else {
+                numeroAcumulado += c;
             }
         }
-        if (temp.length() > 0) tokens.add(temp.toString());
+
+        if (!numeroAcumulado.isEmpty()) tokens.add(numeroAcumulado);
         return tokens;
     }
 
@@ -211,13 +195,11 @@ public class MainActivity extends AppCompatActivity {
         else return String.valueOf(d);
     }
 
-    // BOTÓN LIMPIAR (AC)
     public void onClearClick(View view) {
         pantalla.setText("0");
         esNuevoNumero = true;
     }
 
-    // BOTÓN BORRAR (DEL)
     public void onDeleteClick(View view) {
         String texto = pantalla.getText().toString();
         if (texto.length() > 1) {
